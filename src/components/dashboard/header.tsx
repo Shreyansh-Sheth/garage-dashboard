@@ -1,7 +1,8 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { HealthResponse } from "@/lib/types";
-import { Zap, RefreshCw, Radio } from "lucide-react";
+import { Zap, RefreshCw, Radio, LogOut } from "lucide-react";
 
 interface HeaderProps {
   health: HealthResponse | null;
@@ -10,8 +11,15 @@ interface HeaderProps {
 }
 
 export function Header({ health, onRefresh, loading }: HeaderProps) {
+  const router = useRouter();
   const s3Endpoint = process.env.NEXT_PUBLIC_GARAGE_S3_ENDPOINT ?? "";
   const region = process.env.NEXT_PUBLIC_GARAGE_REGION ?? "garage";
+
+  const handleLogout = async () => {
+    await fetch("/api/auth/logout", { method: "POST" });
+    router.push("/login");
+    router.refresh();
+  };
 
   const statusColor =
     health?.status === "healthy"
@@ -95,6 +103,15 @@ export function Header({ health, onRefresh, loading }: HeaderProps) {
           <RefreshCw
             className={`h-3.5 w-3.5 text-[#5a5a80] transition-colors group-hover:text-neon-cyan ${loading ? "animate-spin" : ""}`}
           />
+        </button>
+
+        {/* Logout */}
+        <button
+          onClick={handleLogout}
+          className="group flex h-8 w-8 items-center justify-center rounded-full border border-[#18183066] bg-[#0a0a14]/40 backdrop-blur-sm transition-all hover:border-neon-pink/20 hover:bg-[#ff0055]/5"
+          title="Logout"
+        >
+          <LogOut className="h-3.5 w-3.5 text-[#5a5a80] transition-colors group-hover:text-neon-pink" />
         </button>
       </div>
     </header>
