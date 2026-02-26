@@ -1,8 +1,34 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { useSearchParams } from "next/navigation";
 
-export function useApi<T>(url: string) {
+export function useClusterId(): string | undefined {
+  const searchParams = useSearchParams();
+  return searchParams.get("cluster") ?? undefined;
+}
+
+export function buildApiUrl(
+  path: string,
+  clusterId?: string,
+  extraParams?: Record<string, string>,
+): string {
+  const params = new URLSearchParams();
+  if (clusterId) params.set("clusterId", clusterId);
+  if (extraParams) {
+    for (const [k, v] of Object.entries(extraParams)) {
+      params.set(k, v);
+    }
+  }
+  const qs = params.toString();
+  return qs ? `${path}?${qs}` : path;
+}
+
+export function useApi<T>(url: string, clusterId?: string) {
+  const fullUrl = clusterId
+    ? `${url}${url.includes("?") ? "&" : "?"}clusterId=${clusterId}`
+    : url;
+
   const [data, setData] = useState<T | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -10,7 +36,7 @@ export function useApi<T>(url: string) {
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(url);
+      const res = await fetch(fullUrl);
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
         throw new Error(body.error || `HTTP ${res.status}`);
@@ -23,13 +49,18 @@ export function useApi<T>(url: string) {
     } finally {
       setLoading(false);
     }
-  }, [url]);
+  }, [fullUrl]);
 
   useEffect(() => {
     refresh();
   }, [refresh]);
 
   return { data, loading, error, refresh };
+}
+
+export function useRole(): "admin" | "readonly" | null {
+  const { data } = useApi<{ role: "admin" | "readonly" | null }>("/api/auth/role");
+  return data?.role ?? null;
 }
 
 export function formatBytes(bytes: number): string {

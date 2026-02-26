@@ -1,5 +1,6 @@
 import { ListObjectsV2Command } from "@aws-sdk/client-s3";
 import { getS3Client } from "@/lib/s3-client";
+import { getClusterFromRequest } from "@/lib/cluster-from-request";
 import { NextRequest, NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
@@ -28,7 +29,8 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const s3 = getS3Client(accessKey, secretKey);
+    const cluster = getClusterFromRequest(request);
+    const s3 = getS3Client(accessKey, secretKey, cluster.s3Endpoint, cluster.region);
     const command = new ListObjectsV2Command({
       Bucket: bucket,
       Prefix: prefix,

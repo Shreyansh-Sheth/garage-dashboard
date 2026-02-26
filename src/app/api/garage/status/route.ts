@@ -1,4 +1,5 @@
 import { garageApi, GarageApiError } from "@/lib/garage-api";
+import { getClusterFromRequest } from "@/lib/cluster-from-request";
 import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
@@ -25,9 +26,10 @@ interface V2StatusResponse {
   dbEngine?: string;
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    const raw = await garageApi<V2StatusResponse>("GET", "/v2/GetClusterStatus");
+    const cluster = getClusterFromRequest(request);
+    const raw = await garageApi<V2StatusResponse>(cluster, "GET", "/v2/GetClusterStatus");
 
     // Normalize v2 array into Record<string, NodeInfo> for the frontend
     const nodesRecord: Record<string, {
@@ -42,7 +44,7 @@ export async function GET() {
     }> = {};
 
     let garageVersion = "";
-    let dbEngine = "";
+    const dbEngine = "";
 
     for (const n of raw.nodes) {
       if (!garageVersion && n.garageVersion) garageVersion = n.garageVersion;
@@ -65,6 +67,7 @@ export async function GET() {
       rustVersion: raw.rustVersion || "",
       dbEngine: raw.dbEngine || dbEngine,
       layoutVersion: raw.layoutVersion,
+      replicationFactor: cluster.replicationFactor,
       nodes: nodesRecord,
     });
   } catch (e) {

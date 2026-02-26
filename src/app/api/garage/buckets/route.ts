@@ -1,17 +1,19 @@
 import { garageApi, GarageApiError } from "@/lib/garage-api";
+import { getClusterFromRequest } from "@/lib/cluster-from-request";
 import { BucketListItem, BucketDetail } from "@/lib/types";
 import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    const list = await garageApi<BucketListItem[]>("GET", "/v2/ListBuckets");
+    const cluster = getClusterFromRequest(request);
+    const list = await garageApi<BucketListItem[]>(cluster, "GET", "/v2/ListBuckets");
 
     // Fetch details for each bucket in parallel
     const details = await Promise.allSettled(
       list.map((b) =>
-        garageApi<BucketDetail>("GET", `/v2/GetBucketInfo?id=${b.id}`),
+        garageApi<BucketDetail>(cluster, "GET", `/v2/GetBucketInfo?id=${b.id}`),
       ),
     );
 
@@ -36,8 +38,9 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
+    const cluster = getClusterFromRequest(request);
     const body = await request.json();
-    const data = await garageApi("POST", "/v2/CreateBucket", body);
+    const data = await garageApi(cluster, "POST", "/v2/CreateBucket", body);
     return NextResponse.json(data);
   } catch (e) {
     if (e instanceof GarageApiError) {

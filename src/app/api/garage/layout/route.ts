@@ -1,4 +1,5 @@
 import { garageApi, GarageApiError } from "@/lib/garage-api";
+import { getClusterFromRequest } from "@/lib/cluster-from-request";
 import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
@@ -18,9 +19,10 @@ interface V2Layout {
   stagedParameters?: unknown;
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    const raw = await garageApi<V2Layout>("GET", "/v2/GetClusterLayout");
+    const cluster = getClusterFromRequest(request);
+    const raw = await garageApi<V2Layout>(cluster, "GET", "/v2/GetClusterLayout");
 
     // Normalize arrays to Records for the frontend
     const roles: Record<string, { zone: string; capacity: number; tags: string[] }> = {};
@@ -55,6 +57,7 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
+    const cluster = getClusterFromRequest(request);
     const body = await request.json();
 
     // Frontend sends Record<nodeId, {zone, capacity, tags} | null>
@@ -71,7 +74,7 @@ export async function POST(request: Request) {
       });
     }
 
-    const data = await garageApi("POST", "/v2/UpdateClusterLayout", { roles });
+    const data = await garageApi(cluster, "POST", "/v2/UpdateClusterLayout", { roles });
     return NextResponse.json(data);
   } catch (e) {
     if (e instanceof GarageApiError) {

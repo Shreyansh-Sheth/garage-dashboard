@@ -14,6 +14,7 @@ import {
   KeyRound,
   HardDrive,
   Grid3X3,
+  Disc3,
 } from "lucide-react";
 
 interface StatsCardsProps {
@@ -77,6 +78,21 @@ export function StatsCards({
   const totalObjects = buckets.reduce((s, b) => s + (b.objects ?? 0), 0);
   const totalBytes = buckets.reduce((s, b) => s + (b.bytes ?? 0), 0);
 
+  // Calculate effective available storage from allocated node capacities
+  // Effective capacity = total allocated / replication factor
+  const replicationFactor = status?.replicationFactor ?? 1;
+  const onlineStorageNodes = storageNodes.filter((n) => n.isUp);
+  const totalAllocatedCapacity = onlineStorageNodes.reduce(
+    (s, n) => s + (n.capacity ?? 0),
+    0
+  );
+  const effectiveCapacity = totalAllocatedCapacity / replicationFactor;
+  const effectiveAvailable = Math.max(effectiveCapacity - totalBytes, 0);
+  const availablePercent =
+    effectiveCapacity > 0
+      ? (effectiveAvailable / effectiveCapacity) * 100
+      : 0;
+
   const partPercent =
     health && health.partitions > 0
       ? (health.partitionsAllOk / health.partitions) * 100
@@ -134,6 +150,19 @@ export function StatsCards({
       percent: totalBytes > 0 ? 75 : 0,
     },
     {
+      label: "Effective Available",
+      value: formatBytes(effectiveAvailable),
+      sub: `${formatBytes(effectiveCapacity)} effective · ${replicationFactor}x repl`,
+      icon: Disc3,
+      color:
+        availablePercent > 20
+          ? "#39ff14"
+          : availablePercent > 5
+            ? "#ff6b35"
+            : "#ff0055",
+      percent: availablePercent,
+    },
+    {
       label: "Partitions",
       value: health
         ? `${health.partitionsAllOk}/${health.partitions}`
@@ -149,7 +178,7 @@ export function StatsCards({
   ];
 
   return (
-    <div className="grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">
+    <div className="grid grid-cols-2 gap-3 lg:grid-cols-4 xl:grid-cols-7">
       {stats.map((stat, i) => (
         <div
           key={stat.label}

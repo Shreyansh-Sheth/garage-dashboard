@@ -1,6 +1,7 @@
 import { GetObjectCommand } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { getS3Client } from "@/lib/s3-client";
+import { getClusterFromRequest } from "@/lib/cluster-from-request";
 import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
@@ -17,6 +18,7 @@ export async function POST(request: Request) {
       );
     }
 
+    const cluster = getClusterFromRequest(request);
     const body = await request.json();
     const { bucket, key, expiresIn } = body;
 
@@ -29,7 +31,7 @@ export async function POST(request: Request) {
 
     const ttl = Math.min(Math.max(Number(expiresIn) || 3600, 60), 604800); // 1min to 7days
 
-    const s3 = getS3Client(accessKey, secretKey);
+    const s3 = getS3Client(accessKey, secretKey, cluster.s3Endpoint, cluster.region);
     const command = new GetObjectCommand({ Bucket: bucket, Key: key });
     const url = await getSignedUrl(s3, command, { expiresIn: ttl });
 

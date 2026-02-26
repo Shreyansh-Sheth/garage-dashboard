@@ -2,7 +2,8 @@
 
 import { useState, useCallback, useEffect } from "react";
 import { BucketDetail, S3Object, S3ListResponse } from "@/lib/types";
-import { formatBytes } from "@/lib/hooks";
+import { formatBytes, buildApiUrl } from "@/lib/hooks";
+import { NeonSelect } from "@/components/ui/neon-select";
 import {
   FolderOpen,
   File,
@@ -31,6 +32,7 @@ import {
 
 interface BucketExplorerProps {
   buckets: BucketDetail[];
+  clusterId?: string;
 }
 
 const EXPIRY_OPTIONS = [
@@ -83,7 +85,7 @@ function formatDate(iso: string | null) {
   });
 }
 
-export function BucketExplorer({ buckets }: BucketExplorerProps) {
+export function BucketExplorer({ buckets, clusterId }: BucketExplorerProps) {
   // Credentials state — in-memory only, cleared on page refresh
   const [s3AccessKey, setS3AccessKey] = useState("");
   const [s3SecretKey, setS3SecretKey] = useState("");
@@ -141,11 +143,11 @@ export function BucketExplorer({ buckets }: BucketExplorerProps) {
       const bucketName =
         buckets.find((b) => b.id === bucket)?.globalAliases?.[0] ?? bucket;
 
-      const params = new URLSearchParams({ bucket: bucketName, prefix: pfx });
-      if (token) params.set("continuationToken", token);
+      const extra: Record<string, string> = { bucket: bucketName, prefix: pfx };
+      if (token) extra.continuationToken = token;
 
       try {
-        const res = await fetch(`/api/garage/s3/objects?${params}`, {
+        const res = await fetch(buildApiUrl("/api/garage/s3/objects", clusterId, extra), {
           headers: s3Headers,
         });
         if (!res.ok) {
@@ -169,7 +171,7 @@ export function BucketExplorer({ buckets }: BucketExplorerProps) {
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [buckets, s3AccessKey, s3SecretKey],
+    [buckets, s3AccessKey, s3SecretKey, clusterId],
   );
 
   useEffect(() => {
@@ -205,7 +207,7 @@ export function BucketExplorer({ buckets }: BucketExplorerProps) {
     setCopied(false);
 
     try {
-      const res = await fetch("/api/garage/s3/presign", {
+      const res = await fetch(buildApiUrl("/api/garage/s3/presign", clusterId), {
         method: "POST",
         headers: { "Content-Type": "application/json", ...s3Headers },
         body: JSON.stringify({
@@ -447,21 +449,22 @@ export function BucketExplorer({ buckets }: BucketExplorerProps) {
       </div>
 
       {/* Bucket selector (compact) */}
-      <div className="mb-3 flex items-center gap-2">
-        <select
+      <div className="mb-3">
+        <NeonSelect
           value={selectedBucket}
-          onChange={(e) => {
-            setSelectedBucket(e.target.value);
+          onChange={(v) => {
+            setSelectedBucket(v);
             setPrefix("");
           }}
-          className="rounded-lg border border-[#18183066] bg-[#0a0a14] px-3 py-1.5 text-[11px] font-medium text-white outline-none focus:border-neon-purple/30 transition-colors"
-        >
-          {buckets.map((b) => (
-            <option key={b.id} value={b.id} style={{ backgroundColor: "#0a0a14", color: "#e0e0f0" }}>
-              {b.globalAliases?.[0] ?? b.id.slice(0, 24)}
-            </option>
-          ))}
-        </select>
+          options={buckets.map((b) => ({
+            value: b.id,
+            label: b.globalAliases?.[0] ?? b.id.slice(0, 24),
+          }))}
+          placeholder="Select bucket..."
+          color="#a855f7"
+          size="sm"
+          className="max-w-[240px]"
+        />
       </div>
 
       {/* Breadcrumb navigation */}

@@ -1,5 +1,4 @@
-const ADMIN_URL = process.env.GARAGE_ADMIN_URL;
-const ADMIN_TOKEN = process.env.GARAGE_ADMIN_TOKEN;
+import { ClusterConfig } from "./clusters";
 
 export class GarageApiError extends Error {
   constructor(
@@ -11,23 +10,24 @@ export class GarageApiError extends Error {
 }
 
 export async function garageApi<T = unknown>(
+  cluster: ClusterConfig,
   method: string,
   endpoint: string,
   body?: unknown,
 ): Promise<T> {
-  if (!ADMIN_URL || !ADMIN_TOKEN) {
+  if (!cluster.adminUrl || !cluster.adminToken) {
     throw new GarageApiError(
       500,
-      "GARAGE_ADMIN_URL and GARAGE_ADMIN_TOKEN must be set in .env.local",
+      "Cluster adminUrl and adminToken must be configured",
     );
   }
 
-  const url = `${ADMIN_URL}${endpoint}`;
+  const url = `${cluster.adminUrl}${endpoint}`;
 
   const res = await fetch(url, {
     method,
     headers: {
-      Authorization: `Bearer ${ADMIN_TOKEN}`,
+      Authorization: `Bearer ${cluster.adminToken}`,
       ...(body ? { "Content-Type": "application/json" } : {}),
     },
     ...(body ? { body: JSON.stringify(body) } : {}),

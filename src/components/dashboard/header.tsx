@@ -2,18 +2,20 @@
 
 import { useRouter } from "next/navigation";
 import { HealthResponse } from "@/lib/types";
+import { ClusterInfo } from "@/lib/clusters";
 import { Zap, RefreshCw, Radio, LogOut } from "lucide-react";
 
 interface HeaderProps {
   health: HealthResponse | null;
   onRefresh: () => void;
   loading: boolean;
+  clusterInfo?: ClusterInfo;
 }
 
-export function Header({ health, onRefresh, loading }: HeaderProps) {
+export function Header({ health, onRefresh, loading, clusterInfo }: HeaderProps) {
   const router = useRouter();
-  const s3Endpoint = process.env.NEXT_PUBLIC_GARAGE_S3_ENDPOINT ?? "";
-  const region = process.env.NEXT_PUBLIC_GARAGE_REGION ?? "garage";
+  const s3Endpoint = clusterInfo?.s3Endpoint ?? "";
+  const region = clusterInfo?.region ?? "garage";
 
   const handleLogout = async () => {
     await fetch("/api/auth/logout", { method: "POST" });
@@ -57,15 +59,17 @@ export function Header({ health, onRefresh, loading }: HeaderProps) {
         <div className="hidden h-5 w-px bg-gradient-to-b from-transparent via-[#18183066] to-transparent md:block" />
 
         {/* S3 Endpoint */}
-        <div className="hidden items-center gap-2.5 md:flex">
-          <Radio className="h-3 w-3 text-[#5a5a80]" />
-          <span className="font-mono text-[11px] tracking-wide text-[#5a5a80]">
-            {s3Endpoint}
-          </span>
-          <span className="rounded-full bg-[#141422] px-2 py-0.5 text-[9px] font-medium tracking-[0.1em] text-[#5a5a80]">
-            {region.toUpperCase()}
-          </span>
-        </div>
+        {s3Endpoint && (
+          <div className="hidden items-center gap-2.5 md:flex">
+            <Radio className="h-3 w-3 text-[#5a5a80]" />
+            <span className="font-mono text-[11px] tracking-wide text-[#5a5a80]">
+              {s3Endpoint}
+            </span>
+            <span className="rounded-full bg-[#141422] px-2 py-0.5 text-[9px] font-medium tracking-[0.1em] text-[#5a5a80]">
+              {region.toUpperCase()}
+            </span>
+          </div>
+        )}
       </div>
 
       <div className="flex items-center gap-3">

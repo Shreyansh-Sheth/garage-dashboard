@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { COOKIE_NAME, computeAuthToken } from "@/lib/auth";
+import { COOKIE_NAME, validateAuthToken, AuthRole } from "@/lib/auth";
 
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // Allow login page and login API through
+  // Allow login page and auth API through
   if (
     pathname === "/login" ||
     pathname.startsWith("/api/auth/")
@@ -21,9 +21,11 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  const password = process.env.DASHBOARD_PASSWORD;
-  if (!password) {
-    // No password configured — let everything through
+  const adminPassword = process.env.DASHBOARD_PASSWORD;
+  const readOnlyPassword = process.env.READ_ONLY_PASSWORD;
+
+  if (!adminPassword && !readOnlyPassword) {
+    // No passwords configured — let everything through
     return NextResponse.next();
   }
 
@@ -32,12 +34,34 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(new URL("/login", request.url));
   }
 
-  const expectedToken = await computeAuthToken(password);
-  if (cookie !== expectedToken) {
-    // Invalid/stale cookie — clear it and redirect
+  // Try validating against both passwords
+  let role: AuthRole | null = null;
+
+  if (adminPassword) {
+    role = await validateAuthToken(cookie, adminPassword);
+  }
+  if (!role && readOnlyPassword) {
+    role = await validateAuthToken(cookie, readOnlyPassword);
+  }
+
+  if (!role) {
     const response = NextResponse.redirect(new URL("/login", request.url));
     response.cookies.delete(COOKIE_NAME);
     return response;
+  }
+
+  // Block write operations for readonly users
+  if (role === "readonly") {
+    const method = request.method.toUpperCase();
+    if (
+      (method === "POST" || method === "PUT" || method === "DELETE") &&
+      pathname.startsWith("/api/garage/")
+    ) {
+      return NextResponse.json(
+        { error: "Read-only access: write operations are not permitted" },
+        { status: 403 },
+      );
+    }
   }
 
   return NextResponse.next();

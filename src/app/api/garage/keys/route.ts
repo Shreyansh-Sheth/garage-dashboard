@@ -1,17 +1,19 @@
 import { garageApi, GarageApiError } from "@/lib/garage-api";
+import { getClusterFromRequest } from "@/lib/cluster-from-request";
 import { KeyListItem, KeyDetail } from "@/lib/types";
 import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    const list = await garageApi<KeyListItem[]>("GET", "/v2/ListKeys");
+    const cluster = getClusterFromRequest(request);
+    const list = await garageApi<KeyListItem[]>(cluster, "GET", "/v2/ListKeys");
 
     // Fetch details for each key in parallel
     const details = await Promise.allSettled(
       list.map((k) =>
-        garageApi<KeyDetail>("GET", `/v2/GetKeyInfo?id=${k.id}`),
+        garageApi<KeyDetail>(cluster, "GET", `/v2/GetKeyInfo?id=${k.id}`),
       ),
     );
 
@@ -36,8 +38,9 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
+    const cluster = getClusterFromRequest(request);
     const body = await request.json();
-    const data = await garageApi("POST", "/v2/CreateKey", body);
+    const data = await garageApi(cluster, "POST", "/v2/CreateKey", body);
     return NextResponse.json(data);
   } catch (e) {
     if (e instanceof GarageApiError) {

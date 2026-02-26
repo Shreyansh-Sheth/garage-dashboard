@@ -1,7 +1,9 @@
 "use client";
 
-import { useState, useCallback } from "react";
-import { useApi } from "@/lib/hooks";
+import { Suspense, useCallback } from "react";
+import { useSearchParams, useRouter } from "next/navigation";
+import { useApi, useClusterId, useRole } from "@/lib/hooks";
+import { ClusterInfo } from "@/lib/clusters";
 import {
   HealthResponse,
   StatusResponse,
@@ -18,15 +20,52 @@ import { HealthPanel } from "@/components/dashboard/health-panel";
 import { CreatePanel } from "@/components/dashboard/create-panel";
 import { BucketExplorer } from "@/components/dashboard/bucket-explorer";
 import { LayoutCreator } from "@/components/dashboard/layout-creator";
+import { MetricsPanel } from "@/components/dashboard/metrics-panel";
 import { AlertTriangle, RefreshCw } from "lucide-react";
 
 export default function Home() {
-  const [activeSection, setActiveSection] = useState("overview");
+  return (
+    <Suspense fallback={<div className="flex h-screen items-center justify-center bg-background atmosphere"><div className="text-[#5a5a80] text-sm">Loading...</div></div>}>
+      <Dashboard />
+    </Suspense>
+  );
+}
 
-  const health = useApi<HealthResponse>("/api/garage/health");
-  const status = useApi<StatusResponse>("/api/garage/status");
-  const buckets = useApi<BucketDetail[]>("/api/garage/buckets");
-  const keys = useApi<KeyDetail[]>("/api/garage/keys");
+function Dashboard() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const clusterId = useClusterId();
+  const activeSection = searchParams.get("section") ?? "overview";
+
+  const role = useRole();
+  const readOnly = role === "readonly";
+  const clusters = useApi<ClusterInfo[]>("/api/clusters");
+  const activeClusterInfo = clusters.data?.find((c) => c.id === clusterId) ?? clusters.data?.[0];
+
+  const setActiveSection = useCallback(
+    (section: string) => {
+      const params = new URLSearchParams();
+      if (clusterId) params.set("cluster", clusterId);
+      params.set("section", section);
+      router.replace(`/?${params.toString()}`);
+    },
+    [router, clusterId],
+  );
+
+  const setCluster = useCallback(
+    (id: string) => {
+      const params = new URLSearchParams();
+      params.set("cluster", id);
+      params.set("section", "overview");
+      router.replace(`/?${params.toString()}`);
+    },
+    [router],
+  );
+
+  const health = useApi<HealthResponse>("/api/garage/health", clusterId);
+  const status = useApi<StatusResponse>("/api/garage/status", clusterId);
+  const buckets = useApi<BucketDetail[]>("/api/garage/buckets", clusterId);
+  const keys = useApi<KeyDetail[]>("/api/garage/keys", clusterId);
 
   const anyLoading =
     health.loading || status.loading || buckets.loading || keys.loading;
@@ -47,12 +86,17 @@ export default function Home() {
         health={health.data}
         onRefresh={refreshAll}
         loading={anyLoading}
+        clusterInfo={activeClusterInfo}
       />
 
       <div className="relative flex flex-1 overflow-hidden">
         <Sidebar
           activeSection={activeSection}
           onSectionChange={setActiveSection}
+          clusters={clusters.data ?? []}
+          activeCluster={clusterId}
+          onClusterChange={setCluster}
+          readOnly={readOnly}
         />
 
         <main className="relative z-[1] flex-1 overflow-y-auto px-6 py-5 grid-bg">
@@ -73,12 +117,12 @@ export default function Home() {
                   <NodesPanel status={status.data} />
                 </Section>
               )}
-              {activeSection === "layout" && (
+              {activeSection === "layout" && !readOnly && (
                 <Section
                   title="Cluster Layout"
                   subtitle="Manage node zone assignments, capacity, and cluster topology"
                 >
-                  <LayoutCreator status={status.data} onStatusRefresh={status.refresh} />
+                  <LayoutCreator status={status.data} onStatusRefresh={status.refresh} clusterId={clusterId} />
                 </Section>
               )}
               {activeSection === "buckets" && (
@@ -91,7 +135,7 @@ export default function Home() {
                   title="Explorer"
                   subtitle="Browse bucket objects and generate presigned URLs"
                 >
-                  <BucketExplorer buckets={buckets.data ?? []} />
+                  <BucketExplorer buckets={buckets.data ?? []} key={clusterId ?? "default"} clusterId={clusterId} />
                 </Section>
               )}
               {activeSection === "keys" && (
@@ -102,6 +146,14 @@ export default function Home() {
                   <KeysPanel keys={keys.data ?? []} />
                 </Section>
               )}
+              {activeSection === "metrics" && (
+                <Section
+                  title="Metrics"
+                  subtitle="S3 operations, disk I/O, and API request analytics"
+                >
+                  <MetricsPanel clusterId={clusterId} />
+                </Section>
+              )}
               {activeSection === "health" && (
                 <Section
                   title="Health"
@@ -110,7 +162,7 @@ export default function Home() {
                   <HealthPanel health={health.data} status={status.data} />
                 </Section>
               )}
-              {activeSection === "create" && (
+              {activeSection === "create" && !readOnly && (
                 <Section
                   title="Create"
                   subtitle="Provision new resources and manage permissions"
@@ -119,6 +171,7 @@ export default function Home() {
                     buckets={buckets.data ?? []}
                     keys={keys.data ?? []}
                     onCreated={refreshAll}
+                    clusterId={clusterId}
                   />
                 </Section>
               )}

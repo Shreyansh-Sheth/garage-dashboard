@@ -1,7 +1,9 @@
 "use client";
 
 import { useState, FormEvent } from "react";
+import { useClusterId, buildApiUrl } from "@/lib/hooks";
 import { BucketDetail, KeyDetail } from "@/lib/types";
+import { NeonSelect } from "@/components/ui/neon-select";
 import {
   Database,
   KeyRound,
@@ -21,6 +23,7 @@ interface CreatePanelProps {
   buckets: BucketDetail[];
   keys: KeyDetail[];
   onCreated: () => void;
+  clusterId?: string;
 }
 
 function StatusMessage({
@@ -112,7 +115,7 @@ function NeonButton({
   );
 }
 
-function CreateBucketForm({ onCreated }: { onCreated: () => void }) {
+function CreateBucketForm({ onCreated, clusterId }: { onCreated: () => void; clusterId?: string }) {
   const [name, setName] = useState("");
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState<{
@@ -126,7 +129,7 @@ function CreateBucketForm({ onCreated }: { onCreated: () => void }) {
     setLoading(true);
     setStatus(null);
     try {
-      const res = await fetch("/api/garage/buckets", {
+      const res = await fetch(buildApiUrl("/api/garage/buckets", clusterId), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ globalAlias: name.trim() }),
@@ -183,7 +186,7 @@ function CreateBucketForm({ onCreated }: { onCreated: () => void }) {
   );
 }
 
-function CreateKeyForm({ onCreated }: { onCreated: () => void }) {
+function CreateKeyForm({ onCreated, clusterId }: { onCreated: () => void; clusterId?: string }) {
   const [name, setName] = useState("");
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState<{
@@ -204,7 +207,7 @@ function CreateKeyForm({ onCreated }: { onCreated: () => void }) {
     setStatus(null);
     setCreatedKey(null);
     try {
-      const res = await fetch("/api/garage/keys", {
+      const res = await fetch(buildApiUrl("/api/garage/keys", clusterId), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: name.trim() }),
@@ -348,10 +351,12 @@ function AllowKeyForm({
   buckets,
   keys,
   onCreated,
+  clusterId,
 }: {
   buckets: BucketDetail[];
   keys: KeyDetail[];
   onCreated: () => void;
+  clusterId?: string;
 }) {
   const [bucketId, setBucketId] = useState("");
   const [keyId, setKeyId] = useState("");
@@ -370,7 +375,7 @@ function AllowKeyForm({
     setLoading(true);
     setStatus(null);
     try {
-      const res = await fetch("/api/garage/bucket-allow", {
+      const res = await fetch(buildApiUrl("/api/garage/bucket-allow", clusterId), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -393,9 +398,21 @@ function AllowKeyForm({
     }
   }
 
-  const selectClass =
-    "w-full rounded-xl border border-[#18183066] bg-[#0a0a14] px-4 py-2.5 text-sm text-white transition-all focus:border-[#00f0ff33] focus:outline-none";
-  const optionStyle = { backgroundColor: "#0a0a14", color: "#e0e0f0" };
+  const bucketOptions = [
+    { value: "", label: "Select bucket..." },
+    ...buckets.map((b) => ({
+      value: b.id,
+      label: b.globalAliases?.[0] ?? b.id.slice(0, 24),
+    })),
+  ];
+
+  const keyOptions = [
+    { value: "", label: "Select key..." },
+    ...keys.map((k) => ({
+      value: k.accessKeyId,
+      label: `${k.name} (${k.accessKeyId.slice(0, 16)})`,
+    })),
+  ];
 
   return (
     <div className="glass-panel rounded-2xl p-5">
@@ -413,35 +430,27 @@ function AllowKeyForm({
             <label className="text-[9px] font-semibold uppercase tracking-[0.1em] text-[#5a5a80]">
               Bucket
             </label>
-            <select
+            <NeonSelect
               value={bucketId}
-              onChange={(e) => setBucketId(e.target.value)}
-              className={`mt-1.5 ${selectClass}`}
-            >
-              <option value="" style={optionStyle}>Select bucket...</option>
-              {buckets.map((b) => (
-                <option key={b.id} value={b.id} style={optionStyle}>
-                  {b.globalAliases?.[0] ?? b.id.slice(0, 24)}
-                </option>
-              ))}
-            </select>
+              onChange={setBucketId}
+              options={bucketOptions}
+              placeholder="Select bucket..."
+              color="#a855f7"
+              className="mt-1.5"
+            />
           </div>
           <div>
             <label className="text-[9px] font-semibold uppercase tracking-[0.1em] text-[#5a5a80]">
               Access Key
             </label>
-            <select
+            <NeonSelect
               value={keyId}
-              onChange={(e) => setKeyId(e.target.value)}
-              className={`mt-1.5 ${selectClass}`}
-            >
-              <option value="" style={optionStyle}>Select key...</option>
-              {keys.map((k) => (
-                <option key={k.accessKeyId} value={k.accessKeyId} style={optionStyle}>
-                  {k.name} ({k.accessKeyId.slice(0, 16)})
-                </option>
-              ))}
-            </select>
+              onChange={setKeyId}
+              options={keyOptions}
+              placeholder="Select key..."
+              color="#ff6b35"
+              className="mt-1.5"
+            />
           </div>
         </div>
 
@@ -500,14 +509,14 @@ function AllowKeyForm({
   );
 }
 
-export function CreatePanel({ buckets, keys, onCreated }: CreatePanelProps) {
+export function CreatePanel({ buckets, keys, onCreated, clusterId }: CreatePanelProps) {
   return (
     <div className="space-y-4">
       <div className="grid gap-4 lg:grid-cols-2">
-        <CreateBucketForm onCreated={onCreated} />
-        <CreateKeyForm onCreated={onCreated} />
+        <CreateBucketForm onCreated={onCreated} clusterId={clusterId} />
+        <CreateKeyForm onCreated={onCreated} clusterId={clusterId} />
       </div>
-      <AllowKeyForm buckets={buckets} keys={keys} onCreated={onCreated} />
+      <AllowKeyForm buckets={buckets} keys={keys} onCreated={onCreated} clusterId={clusterId} />
     </div>
   );
 }

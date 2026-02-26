@@ -32,6 +32,7 @@ export interface StatusResponse {
   rustVersion: string;
   dbEngine: string;
   layoutVersion: number;
+  replicationFactor: number;
   nodes: Record<string, NodeInfo>;
 }
 

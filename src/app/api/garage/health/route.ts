@@ -1,11 +1,13 @@
 import { garageApi, GarageApiError } from "@/lib/garage-api";
+import { getClusterFromRequest } from "@/lib/cluster-from-request";
 import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
-    const data = await garageApi("GET", "/v2/GetClusterHealth");
+    const cluster = getClusterFromRequest(request);
+    const data = await garageApi(cluster, "GET", "/v2/GetClusterHealth");
 
     // Normalize v2 field names to match our HealthResponse type
     const raw = data as Record<string, unknown>;

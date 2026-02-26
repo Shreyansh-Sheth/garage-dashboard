@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, FormEvent } from "react";
-import { useApi, formatBytes } from "@/lib/hooks";
+import { useApi, formatBytes, buildApiUrl } from "@/lib/hooks";
+import { NeonSelect } from "@/components/ui/neon-select";
 import { LayoutResponse, StatusResponse, NodeRole } from "@/lib/types";
 import {
   Map,
@@ -22,11 +23,16 @@ import {
   Link,
   Copy,
   Check,
+  Disc3,
+  Terminal,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 
 interface LayoutCreatorProps {
   status: StatusResponse | null;
   onStatusRefresh?: () => void;
+  clusterId?: string;
 }
 
 const ZONE_COLORS = [
@@ -497,11 +503,13 @@ function AssignNodeForm({
   layout,
   allZones,
   onAssigned,
+  clusterId,
 }: {
   status: StatusResponse | null;
   layout: LayoutResponse;
   allZones: string[];
   onAssigned: () => void;
+  clusterId?: string;
 }) {
   const allNodeIds = status ? Object.keys(status.nodes) : [];
   const [nodeId, setNodeId] = useState("");
@@ -551,7 +559,7 @@ function AssignNodeForm({
     setLoading(true);
     setMsg(null);
     try {
-      const res = await fetch("/api/garage/layout", {
+      const res = await fetch(buildApiUrl("/api/garage/layout", clusterId), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -580,7 +588,7 @@ function AssignNodeForm({
     setLoading(true);
     setMsg(null);
     try {
-      const res = await fetch("/api/garage/layout", {
+      const res = await fetch(buildApiUrl("/api/garage/layout", clusterId), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ [nodeId]: null }),
@@ -605,9 +613,24 @@ function AssignNodeForm({
   const isExistingNode = !!layout.roles[nodeId];
   const inputClass =
     "w-full rounded-xl border border-[#18183066] bg-[#05050a]/80 px-4 py-2.5 font-mono text-sm text-foreground placeholder-[#2a2a44] transition-all focus:border-[#00f0ff33] focus:outline-none";
-  const selectClass =
-    "w-full rounded-xl border border-[#18183066] bg-[#0a0a14] px-4 py-2.5 text-sm text-white transition-all focus:border-[#00f0ff33] focus:outline-none";
-  const optionStyle = { backgroundColor: "#0a0a14", color: "#e0e0f0" };
+  const nodeOptions = [
+    { value: "", label: "Select a node..." },
+    ...allNodeIds.map((id) => {
+      const node = status?.nodes[id];
+      const hostname = node?.hostname || id.slice(0, 16);
+      const assigned = !!layout.roles[id];
+      return {
+        value: id,
+        label: `${hostname} ${assigned ? "(assigned)" : "(unassigned)"} - ${id.slice(0, 12)}...`,
+      };
+    }),
+  ];
+
+  const zoneOptions = [
+    { value: "", label: "Select zone..." },
+    ...allZones.map((z) => ({ value: z, label: z })),
+    { value: "__custom__", label: "+ New zone..." },
+  ];
 
   return (
     <div className="glass-panel animate-in stagger-3 rounded-2xl p-5">
@@ -631,23 +654,14 @@ function AssignNodeForm({
           <label className="text-[9px] font-semibold uppercase tracking-[0.1em] text-[#5a5a80]">
             Node
           </label>
-          <select
+          <NeonSelect
             value={nodeId}
-            onChange={(e) => handleNodeSelect(e.target.value)}
-            className={`mt-1.5 ${selectClass}`}
-          >
-            <option value="" style={optionStyle}>Select a node...</option>
-            {allNodeIds.map((id) => {
-              const node = status?.nodes[id];
-              const hostname = node?.hostname || id.slice(0, 16);
-              const assigned = !!layout.roles[id];
-              return (
-                <option key={id} value={id} style={optionStyle}>
-                  {hostname} {assigned ? "(assigned)" : "(unassigned)"} - {id.slice(0, 12)}...
-                </option>
-              );
-            })}
-          </select>
+            onChange={handleNodeSelect}
+            options={nodeOptions}
+            placeholder="Select a node..."
+            color="#a855f7"
+            className="mt-1.5"
+          />
         </div>
 
         <div className="grid gap-3 sm:grid-cols-2">
@@ -656,19 +670,14 @@ function AssignNodeForm({
             <label className="text-[9px] font-semibold uppercase tracking-[0.1em] text-[#5a5a80]">
               Zone
             </label>
-            <select
+            <NeonSelect
               value={zone}
-              onChange={(e) => setZone(e.target.value)}
-              className={`mt-1.5 ${selectClass}`}
-            >
-              <option value="" style={optionStyle}>Select zone...</option>
-              {allZones.map((z) => (
-                <option key={z} value={z} style={optionStyle}>
-                  {z}
-                </option>
-              ))}
-              <option value="__custom__" style={optionStyle}>+ New zone...</option>
-            </select>
+              onChange={setZone}
+              options={zoneOptions}
+              placeholder="Select zone..."
+              color="#3b82f6"
+              className="mt-1.5"
+            />
             {zone === "__custom__" && (
               <input
                 type="text"
@@ -863,17 +872,162 @@ function LayoutTable({
   );
 }
 
+/* ── Quick Connect Panel ── */
+function QuickConnectPanel({
+  onConnected,
+  clusterId,
+}: {
+  onConnected: () => void;
+  clusterId?: string;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const [ip, setIp] = useState("");
+  const [adminPort, setAdminPort] = useState("3903");
+  const [rpcPort, setRpcPort] = useState("3901");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+
+  async function handleDiscover(e: FormEvent) {
+    e.preventDefault();
+    const trimmed = ip.trim();
+    if (!trimmed) return;
+
+    setLoading(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      const res = await fetch(buildApiUrl("/api/garage/discover", clusterId), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ip: trimmed,
+          adminPort: parseInt(adminPort) || 3903,
+          rpcPort: parseInt(rpcPort) || 3901,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to discover/connect node");
+      setSuccess(`Connected ${data.hostname || trimmed} (${data.nodeId?.slice(0, 12)}...)`);
+      setIp("");
+      onConnected();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Unknown error");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const inputClass =
+    "w-full rounded-xl border border-[#18183066] bg-[#05050a]/80 px-4 py-2.5 font-mono text-sm text-foreground placeholder-[#2a2a44] transition-all focus:border-[#00f0ff33] focus:outline-none";
+  const smallInputClass =
+    "w-full rounded-xl border border-[#18183066] bg-[#05050a]/80 px-3 py-2 font-mono text-xs text-foreground placeholder-[#2a2a44] transition-all focus:border-[#00f0ff33] focus:outline-none";
+
+  return (
+    <div className="mt-4 rounded-xl border border-[#18183044] bg-[#05050a]/40">
+      {/* Toggle header */}
+      <button
+        type="button"
+        onClick={() => setExpanded(!expanded)}
+        className="flex w-full items-center gap-2 px-4 py-3 text-left transition-all hover:bg-[#ffffff04]"
+      >
+        <Terminal className="h-3.5 w-3.5 text-neon-orange" />
+        <span className="flex-1 text-[11px] font-medium text-[#8a8ab0]">
+          Quick Connect by IP
+        </span>
+        {expanded ? (
+          <ChevronUp className="h-3 w-3 text-[#3a3a5a]" />
+        ) : (
+          <ChevronDown className="h-3 w-3 text-[#3a3a5a]" />
+        )}
+      </button>
+
+      {expanded && (
+        <div className="border-t border-[#18183044] px-4 pb-4 pt-3">
+          <form onSubmit={handleDiscover} className="space-y-3">
+            <p className="text-[11px] text-[#5a5a80]">
+              Enter the node&apos;s IP — the dashboard will auto-discover its node ID and connect it.
+            </p>
+            <div>
+              <label className="text-[9px] font-semibold uppercase tracking-[0.1em] text-[#5a5a80]">
+                IP Address
+              </label>
+              <input
+                type="text"
+                value={ip}
+                onChange={(e) => { setIp(e.target.value); setError(null); setSuccess(null); }}
+                placeholder="192.168.1.100"
+                className={`mt-1.5 ${inputClass}`}
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <label className="text-[9px] font-semibold uppercase tracking-[0.1em] text-[#5a5a80]">
+                  Admin Port
+                </label>
+                <input
+                  type="text"
+                  value={adminPort}
+                  onChange={(e) => setAdminPort(e.target.value)}
+                  placeholder="3903"
+                  className={`mt-1.5 ${smallInputClass}`}
+                />
+              </div>
+              <div>
+                <label className="text-[9px] font-semibold uppercase tracking-[0.1em] text-[#5a5a80]">
+                  RPC Port
+                </label>
+                <input
+                  type="text"
+                  value={rpcPort}
+                  onChange={(e) => setRpcPort(e.target.value)}
+                  placeholder="3901"
+                  className={`mt-1.5 ${smallInputClass}`}
+                />
+              </div>
+            </div>
+            <button
+              type="submit"
+              disabled={loading || !ip.trim()}
+              className="flex w-full items-center justify-center gap-2 rounded-xl border border-[#ff6b3525] bg-[#ff6b3508] px-4 py-2.5 text-sm font-medium text-neon-orange transition-all hover:bg-[#ff6b3512] disabled:opacity-30"
+            >
+              {loading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <><Link className="h-3.5 w-3.5" />Discover &amp; Connect</>
+              )}
+            </button>
+          </form>
+
+          {success && (
+            <div className="mt-3">
+              <StatusMessage status={{ type: "success", message: success }} />
+            </div>
+          )}
+          {error && (
+            <div className="mt-3">
+              <StatusMessage status={{ type: "error", message: error }} />
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ── Add Node Wizard ── */
 function AddNodeWizard({
   status,
   layout,
   allZones,
   onComplete,
+  clusterId,
 }: {
   status: StatusResponse | null;
   layout: LayoutResponse;
   allZones: string[];
   onComplete: () => void;
+  clusterId?: string;
 }) {
   const garageCli = process.env.NEXT_PUBLIC_GARAGE_CLI_PATH || "garage";
   const garageConfig = process.env.NEXT_PUBLIC_GARAGE_CLI_CONFIG;
@@ -903,9 +1057,6 @@ function AddNodeWizard({
 
   const inputClass =
     "w-full rounded-xl border border-[#18183066] bg-[#05050a]/80 px-4 py-2.5 font-mono text-sm text-foreground placeholder-[#2a2a44] transition-all focus:border-[#00f0ff33] focus:outline-none";
-  const selectClass =
-    "w-full rounded-xl border border-[#18183066] bg-[#0a0a14] px-4 py-2.5 text-sm text-white transition-all focus:border-[#00f0ff33] focus:outline-none";
-  const optionStyle = { backgroundColor: "#0a0a14", color: "#e0e0f0" };
 
   // Detect the newly connected node from status (node that's in status but not in layout)
   const unassignedNodes = status
@@ -925,7 +1076,7 @@ function AddNodeWizard({
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/garage/connect", {
+      const res = await fetch(buildApiUrl("/api/garage/connect", clusterId), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify([addr]),
@@ -970,7 +1121,7 @@ function AddNodeWizard({
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/garage/layout", {
+      const res = await fetch(buildApiUrl("/api/garage/layout", clusterId), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -992,7 +1143,7 @@ function AddNodeWizard({
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/garage/layout/apply", {
+      const res = await fetch(buildApiUrl("/api/garage/layout/apply", clusterId), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ version: layout.version + 1 }),
@@ -1167,17 +1318,17 @@ function AddNodeWizard({
               <label className="text-[9px] font-semibold uppercase tracking-[0.1em] text-[#5a5a80]">
                 Node
               </label>
-              <select
+              <NeonSelect
                 value={connectedNodeId || ""}
-                onChange={(e) => setConnectedNodeId(e.target.value)}
-                className={`mt-1.5 ${selectClass}`}
-              >
-                {unassignedNodes.map((id) => (
-                  <option key={id} value={id} style={optionStyle}>
-                    {status?.nodes[id]?.hostname || id.slice(0, 16)} — {id.slice(0, 12)}...
-                  </option>
-                ))}
-              </select>
+                onChange={setConnectedNodeId}
+                options={unassignedNodes.map((id) => ({
+                  value: id,
+                  label: `${status?.nodes[id]?.hostname || id.slice(0, 16)} — ${id.slice(0, 12)}...`,
+                }))}
+                placeholder="Select node..."
+                color="#00f0ff"
+                className="mt-1.5"
+              />
             </div>
           )}
 
@@ -1186,17 +1337,18 @@ function AddNodeWizard({
               <label className="text-[9px] font-semibold uppercase tracking-[0.1em] text-[#5a5a80]">
                 Zone
               </label>
-              <select
+              <NeonSelect
                 value={zone}
-                onChange={(e) => setZone(e.target.value)}
-                className={`mt-1.5 ${selectClass}`}
-              >
-                <option value="" style={optionStyle}>Select zone...</option>
-                {allZones.map((z) => (
-                  <option key={z} value={z} style={optionStyle}>{z}</option>
-                ))}
-                <option value="__custom__" style={optionStyle}>+ New zone...</option>
-              </select>
+                onChange={setZone}
+                options={[
+                  { value: "", label: "Select zone..." },
+                  ...allZones.map((z) => ({ value: z, label: z })),
+                  { value: "__custom__", label: "+ New zone..." },
+                ]}
+                placeholder="Select zone..."
+                color="#3b82f6"
+                className="mt-1.5"
+              />
               {zone === "__custom__" && (
                 <input
                   type="text"
@@ -1346,13 +1498,140 @@ function AddNodeWizard({
           <StatusMessage status={{ type: "error", message: error }} />
         </div>
       )}
+
+      {/* Quick Connect Panel */}
+      <QuickConnectPanel onConnected={onComplete} clusterId={clusterId} />
+    </div>
+  );
+}
+
+/* ── Storage Summary Panel ── */
+function LayoutStorageSummary({
+  layout,
+  status,
+}: {
+  layout: LayoutResponse;
+  status: StatusResponse | null;
+}) {
+  const replicationFactor = status?.replicationFactor ?? 1;
+  const roles = Object.values(layout.roles);
+  const totalAllocated = roles.reduce((s, r) => s + r.capacity, 0);
+  const effectiveCapacity = totalAllocated / replicationFactor;
+  const zones = new Set(roles.map((r) => r.zone)).size;
+
+  // Calculate projected values if staged changes exist
+  const stagedEntries = Object.entries(layout.stagedRoleChanges);
+  const hasStaged = stagedEntries.length > 0;
+
+  let projectedAllocated = totalAllocated;
+  if (hasStaged) {
+    for (const [nodeId, change] of stagedEntries) {
+      if (change === null) {
+        // Removal — subtract existing capacity
+        const existing = layout.roles[nodeId];
+        if (existing) projectedAllocated -= existing.capacity;
+      } else if (layout.roles[nodeId]) {
+        // Modification — replace capacity
+        projectedAllocated += change.capacity - layout.roles[nodeId].capacity;
+      } else {
+        // Addition — add new capacity
+        projectedAllocated += change.capacity;
+      }
+    }
+  }
+  const projectedEffective = projectedAllocated / replicationFactor;
+
+  const items = [
+    {
+      label: "Total Allocated",
+      value: formatBytes(totalAllocated),
+      color: "#00f0ff",
+    },
+    {
+      label: "Replication Factor",
+      value: `${replicationFactor}x`,
+      color: "#a855f7",
+    },
+    {
+      label: "Effective Capacity",
+      value: formatBytes(effectiveCapacity),
+      color: "#39ff14",
+    },
+    {
+      label: "Zones / Nodes",
+      value: `${zones} / ${roles.length}`,
+      color: "#ff6b35",
+    },
+  ];
+
+  return (
+    <div className="glass-panel animate-in stagger-2 rounded-2xl p-5">
+      <div className="mb-4 flex items-center gap-2.5">
+        <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-neon-green/10">
+          <Disc3 className="h-3.5 w-3.5 text-neon-green" />
+        </div>
+        <div>
+          <h3 className="font-heading text-sm font-medium tracking-wide text-foreground">
+            Storage Summary
+          </h3>
+          <p className="text-[10px] text-[#5a5a80]">
+            Effective capacity after {replicationFactor}x replication
+          </p>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        {items.map((item) => (
+          <div
+            key={item.label}
+            className="rounded-xl bg-[#05050a]/60 p-3 ring-1 ring-[#18183044]"
+          >
+            <p className="text-[9px] font-semibold uppercase tracking-[0.1em] text-[#5a5a80]">
+              {item.label}
+            </p>
+            <p
+              className="mt-1.5 text-lg font-bold tracking-tight"
+              style={{ color: item.color }}
+            >
+              {item.value}
+            </p>
+          </div>
+        ))}
+      </div>
+
+      {/* Projected changes bar */}
+      {hasStaged && (
+        <div className="mt-3 rounded-xl bg-[#ff6b35]/[0.04] p-3 ring-1 ring-[#ff6b35]/12">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="h-3 w-3 text-neon-orange" />
+            <span className="text-[10px] font-medium text-neon-orange">
+              After staged changes
+            </span>
+          </div>
+          <div className="mt-2 flex items-center gap-4 text-[11px]">
+            <span className="text-[#5a5a80]">
+              Allocated:{" "}
+              <span className="font-medium text-foreground">
+                {formatBytes(projectedAllocated)}
+              </span>
+            </span>
+            <span className="text-[#3a3a5a]">&rarr;</span>
+            <span className="text-[#5a5a80]">
+              Effective:{" "}
+              <span className="font-medium text-neon-green">
+                {formatBytes(projectedEffective)}
+              </span>
+            </span>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
 /* ── Main Layout Creator ── */
-export function LayoutCreator({ status, onStatusRefresh }: LayoutCreatorProps) {
-  const layout = useApi<LayoutResponse>("/api/garage/layout");
+export function LayoutCreator({ status, onStatusRefresh, clusterId }: LayoutCreatorProps) {
+  const layout = useApi<LayoutResponse>("/api/garage/layout", clusterId);
 
   if (layout.loading || !layout.data) {
     return (
@@ -1406,7 +1685,7 @@ export function LayoutCreator({ status, onStatusRefresh }: LayoutCreatorProps) {
   const allZones = Array.from(zoneSet).sort();
 
   async function handleApply() {
-    const res = await fetch("/api/garage/layout/apply", {
+    const res = await fetch(buildApiUrl("/api/garage/layout/apply", clusterId), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ version: layoutData.version + 1 }),
@@ -1417,7 +1696,7 @@ export function LayoutCreator({ status, onStatusRefresh }: LayoutCreatorProps) {
   }
 
   async function handleRevert() {
-    const res = await fetch("/api/garage/layout/revert", {
+    const res = await fetch(buildApiUrl("/api/garage/layout/revert", clusterId), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ version: layoutData.version }),
@@ -1434,6 +1713,9 @@ export function LayoutCreator({ status, onStatusRefresh }: LayoutCreatorProps) {
 
   return (
     <div className="space-y-4">
+      {/* Storage Summary */}
+      <LayoutStorageSummary layout={layoutData} status={status} />
+
       {/* Visual Topology */}
       <ZoneTopology
         layout={layoutData}
@@ -1457,12 +1739,14 @@ export function LayoutCreator({ status, onStatusRefresh }: LayoutCreatorProps) {
           layout={layoutData}
           allZones={allZones}
           onComplete={refreshAll}
+          clusterId={clusterId}
         />
         <AssignNodeForm
           status={status}
           layout={layoutData}
           allZones={allZones}
           onAssigned={layout.refresh}
+          clusterId={clusterId}
         />
       </div>
 

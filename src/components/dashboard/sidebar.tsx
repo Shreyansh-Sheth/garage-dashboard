@@ -1,5 +1,7 @@
 "use client";
 
+import { ClusterInfo } from "@/lib/clusters";
+import { NeonSelect } from "@/components/ui/neon-select";
 import {
   LayoutGrid,
   Server,
@@ -10,11 +12,16 @@ import {
   Settings,
   Map,
   FolderOpen,
+  Activity,
 } from "lucide-react";
 
 interface SidebarProps {
   activeSection: string;
   onSectionChange: (section: string) => void;
+  clusters: ClusterInfo[];
+  activeCluster: string | undefined;
+  onClusterChange: (id: string) => void;
+  readOnly?: boolean;
 }
 
 const navItems = [
@@ -24,15 +31,50 @@ const navItems = [
   { id: "buckets", label: "Buckets", icon: Database, color: "#a855f7" },
   { id: "explorer", label: "Explorer", icon: FolderOpen, color: "#a855f7" },
   { id: "keys", label: "Keys", icon: KeyRound, color: "#ff6b35" },
+  { id: "metrics", label: "Metrics", icon: Activity, color: "#fbbf24" },
   { id: "health", label: "Health", icon: HeartPulse, color: "#39ff14" },
   { id: "create", label: "Create", icon: Plus, color: "#00f0ff" },
 ];
 
-export function Sidebar({ activeSection, onSectionChange }: SidebarProps) {
+export function Sidebar({ activeSection, onSectionChange, clusters, activeCluster, onClusterChange, readOnly }: SidebarProps) {
+  const showClusterSelector = clusters.length > 1;
+
+  const clusterOptions = clusters.map((c) => ({ value: c.id, label: c.name }));
+
   return (
     <aside className="relative z-10 flex w-[52px] flex-col items-center border-r border-[#18183033] py-5 lg:w-[200px] lg:items-stretch lg:px-3">
+      {/* Cluster selector */}
+      {showClusterSelector && (
+        <div className="mb-3 px-1 lg:px-0">
+          {/* Desktop */}
+          <div className="hidden lg:block">
+            <NeonSelect
+              value={activeCluster ?? clusters[0]?.id ?? ""}
+              onChange={onClusterChange}
+              options={clusterOptions}
+              placeholder="Select cluster..."
+              color="#00f0ff"
+              size="sm"
+            />
+          </div>
+          {/* Mobile */}
+          <div className="lg:hidden flex justify-center">
+            <NeonSelect
+              value={activeCluster ?? clusters[0]?.id ?? ""}
+              onChange={onClusterChange}
+              options={clusterOptions}
+              placeholder="..."
+              color="#00f0ff"
+              size="sm"
+              className="w-full"
+            />
+          </div>
+          <div className="mt-2 mx-1 h-px bg-gradient-to-r from-transparent via-[#18183066] to-transparent" />
+        </div>
+      )}
+
       <nav className="flex flex-1 flex-col gap-0.5">
-        {navItems.map((item) => {
+        {navItems.filter((item) => !readOnly || (item.id !== "layout" && item.id !== "create")).map((item) => {
           const isActive = activeSection === item.id;
           return (
             <button
